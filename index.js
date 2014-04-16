@@ -109,6 +109,7 @@ Adapter.prototype.del = function del(id, room, fn) {
  *
  * Options:
  *  - `except` {Array} sids that should be excluded
+ *  - `to` {Array} if specified, sids that are the only ones who should receive the message
  *  - `rooms` {Array} list of rooms to broadcast to
  *  - `method` {String} 'write' or 'send' if primus-emitter is present
  *
@@ -120,32 +121,57 @@ Adapter.prototype.del = function del(id, room, fn) {
 
 Adapter.prototype.broadcast = function broadcast(data, opts, clients) {
   opts = opts || {};
+  console.log("internal broadcasting");
   var socket
     , rooms = opts.rooms || []
     , except = opts.except || []
+    , to = opts.to || []
+    , tolength = to.length
     , method = opts.method || 'write'
     , length = rooms.length
     , ids = {};
-  
-  if (length) {
+  if (length) {   // if rooms are specified
     for (var i = 0; i < length; i++) {
       var room = this.rooms[rooms[i]];
-      if (!room) continue;
-      for (var id in room) {
-        if (ids[id] || ~except.indexOf(id)) continue;
-        socket = clients[id];
-        if (socket) {
-          socket[method].apply(socket, data);
-          ids[id] = true;
+      if (!room) continue; // if the room is not listed on this server
+      if (tolength) {
+        for (var j=0; j<tolength; j++) {
+          var recieverid = to[j];
+          if (room[recieverid] && !ids[recieverid]) {
+            socket = clients[recieverid];
+            socket[method].apply(socket, data);
+            ids[recieverid] = true;
+          }
+        }
+      } else {
+        for (var id in room) {
+          if (ids[id] || ~except.indexOf(id)) continue;
+          socket = clients[id];
+          if (socket) {
+            socket[method].apply(socket, data);
+            ids[id] = true;
+          }
         }
       }
     }
-  } else {
-    for (var id in this.sids) {
-      if (~except.indexOf(id)) continue;
-      socket = clients[id];
-      if (socket) socket[method].apply(socket, data);
+  } else { // if no room is specified
+    if (tolength) {
+      for (var j=0; j<tolength; j++) {
+        var recieverid = to[j];
+        if (this.sids[recieverid] && !ids[recieverid]) {
+          socket = clients[recieverid];
+          socket[method].apply(socket, data);
+          ids[recieverid] = true;
+        }
+      }
+    } else {
+      for (var id in this.sids) {
+        if (~except.indexOf(id)) continue;
+        socket = clients[id];
+        if (socket) socket[method].apply(socket, data);
+      }
     }
+
   }
 };
 
